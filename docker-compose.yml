@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres
+    container_name: main_db
+    environment:
+      POSTGRES_PASSWORD: zhlv4Hqrwz2024
+    ports:
+      - "5432:5432"
+    networks:
+      - pg-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: sgrudinin2016@yandex.ru
+      PGADMIN_DEFAULT_PASSWORD: zhlv4Hqrwz2024
+    ports:
+      - "8088:80"
+    networks:
+      - pg-network
+
+  fastapi:
+    build: .
+    container_name: fastapi_app
+    environment:
+      - DATABASE_URL=postgresql://postgres:zhlv4Hqrwz2024@postgres:5432/postgres
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    networks:
+      - pg-network
+
+networks:
+  pg-network:
