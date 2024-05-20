@@ -1,36 +1,43 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from starlette.responses import HTMLResponse
+import os
+from fastapi import FastAPI
 from starlette.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from . import models, schemas, crud
-from .database import SessionLocal, engine, Base
+from starlette.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from app import crud, models, schemas
+from app.database import SessionLocal, engine
 
 app = FastAPI()
 
-# Монтируем директорию static
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+models.Base.metadata.create_all(bind=engine)
 
-# Подключаем Jinja2 templates
 templates = Jinja2Templates(directory="app/templates")
 
-# Создаем базу данных
-Base.metadata.create_all(bind=engine)
-
-# Получение сессии базы данных
-def get_db():
-    db = SessionLocal()
+@app.middleware("http")
+async def db_session_middleware(request: Request, call_next):
+    response = Response("Internal server error", status_code=500)
     try:
-        yield db
+        request.state.db = SessionLocal()
+        response = await call_next(request)
     finally:
-        db.close()
+        request.state.db.close()
+    return response
+
+def get_db(request: Request):
+    return request.state.db
 
 @app.get("/", response_class=HTMLResponse)
-def read_root(request: Request, db: Session = Depends(get_db)):
+async def read_root(request: Request, db: Session = Depends(get_db)):
     employees = crud.get_employees(db)
     return templates.TemplateResponse("index.html", {"request": request, "employees": employees})
 
-@app.post("/employees/", response_model=schemas.Employee)
-def create_employee(employee: schemas.EmployeeCreate, db: Session = Depends(get_db)):
-    db_employee = crud.create_employee(db, employee)
-    return db_employee
+@app.post("/employees/", response_class=HTMLResponse)
+async def create_employee(request: Request, employee: schemas.EmployeeCreate, db: Session = Depends(get_db)):
+    crud.create_employee(db=db, employee=employee)
+    employees = crud.get_employees(db)
+    return templates.TemplateResponse("index.html", {"request": request, "employees": employees})
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
